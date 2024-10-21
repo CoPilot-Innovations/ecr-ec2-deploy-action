@@ -1,0 +1,89 @@
+name: "ECR Deploy Action"
+description: "Build and deploy Docker image to Amazon ECR and pull the image on an EC2 instance."
+author: "Your Organization"
+
+inputs:
+  aws-access-key-id:
+    description: "AWS Access Key ID"
+    required: true
+  aws-secret-access-key:
+    description: "AWS Secret Access Key"
+    required: true
+  aws-region:
+    description: "AWS Region"
+    required: true
+    default: "ap-southeast-2"
+  ecr-repository:
+    description: "ECR Repository Name"
+    required: true
+    default: "demo/ci-cd"
+  ec2-host:
+    description: "EC2 Instance Host"
+    required: true
+  ec2-user:
+    description: "EC2 Instance Username"
+    required: true
+  ec2-private-key:
+    description: "EC2 SSH Private Key"
+    required: true
+  container-name:
+    description: "Docker Container Name"
+    required: true
+    default: "demo_container2"
+  image-tag:
+    description: "Docker Image Tag"
+    required: true
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push Docker image to Amazon ECR
+      env:
+        REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        REPOSITORY: ${{ inputs.ecr-repository }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+      run: |
+        docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+        docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+
+    - name: SSH into EC2 and pull the latest Docker image
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.ec2-host }}
+        username: ${{ inputs.ec2-user }}
+        key: ${{ inputs.ec2-private-key }}
+        port: 22
+        script: |
+          export REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          export REPOSITORY="${{ inputs.ecr-repository }}"
+          export IMAGE_TAG="${{ inputs.image-tag }}"
+          export CONTAINER_NAME="${{ inputs.container-name }}"
+          export AWS_ACCESS_KEY_ID="${{ inputs.aws-access-key-id }}"
+          export AWS_SECRET_ACCESS_KEY="${{ inputs.aws-secret-access-key }}"
+          export AWS_DEFAULT_REGION="${{ inputs.aws-region }}"
+          
+          aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REGISTRY
+          
+          docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          
+          CONTAINER_ID=$(docker ps -q --filter name=$CONTAINER_NAME)
+          if [ ! -z "$CONTAINER_ID" ]; then
+            docker stop $CONTAINER_ID
+          fi
+          
+          docker run -d --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
