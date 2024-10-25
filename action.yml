@@ -88,6 +88,8 @@ runs:
           CONTAINER_ID=$(docker ps -q --filter name=$CONTAINER_NAME)
           if [ ! -z "$CONTAINER_ID" ]; then
             docker stop $CONTAINER_ID
+            docker rm $CONTAINER_ID
           fi
+
           
           docker run -d -p ${{ inputs.host-port }}:${{ inputs.container-port }} --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
