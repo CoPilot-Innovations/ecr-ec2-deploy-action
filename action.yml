@@ -91,5 +91,6 @@ runs:
             docker rm $CONTAINER_ID
           fi
 
+          docker image prune -a -f
           
           docker run -d -p ${{ inputs.host-port }}:${{ inputs.container-port }} --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
