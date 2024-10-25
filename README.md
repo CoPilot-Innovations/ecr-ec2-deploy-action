@@ -6,7 +6,7 @@ This GitHub Action automates the process of building Docker images, pushing them
 
 ```yaml
 - name: Deploy to ECR and EC2
-  uses: CoPilot-Innovations/ecr-ec2-deploy-action@latest
+  uses: CoPilot-Innovations/ecr-ec2-deploy-action@v1.0.0
   with:
     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
