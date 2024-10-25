@@ -1,70 +1,71 @@
-name: "ECR Deploy Action"
-description: "Build and deploy Docker image to Amazon ECR and pull the image on an EC2 instance."
-author: "Your Organization"
-
+# action.yml
+name: 'ECR Deploy Action'
+description: 'Build and deploy Docker images to Amazon ECR and EC2'
 inputs:
   aws-access-key-id:
-    description: "AWS Access Key ID"
+    description: 'AWS Access Key ID'
     required: true
   aws-secret-access-key:
-    description: "AWS Secret Access Key"
+    description: 'AWS Secret Access Key'
     required: true
   aws-region:
-    description: "AWS Region"
+    description: 'AWS Region'
     required: true
-    default: "ap-southeast-2"
+    default: 'ap-southeast-2'
   ecr-repository:
-    description: "ECR Repository Name"
+    description: 'ECR Repository name'
     required: true
-    default: "demo/ci-cd"
+  image-tag:
+    description: 'Docker image tag'
+    required: true
+    default: 'latest'
   ec2-host:
-    description: "EC2 Instance Host"
+    description: 'EC2 host address'
     required: true
   ec2-user:
-    description: "EC2 Instance Username"
+    description: 'EC2 username'
     required: true
   ec2-private-key:
-    description: "EC2 SSH Private Key"
+    description: 'EC2 SSH private key'
     required: true
   container-name:
-    description: "Docker Container Name"
+    description: 'Name for the Docker container'
     required: true
-    default: "demo_container2"
-  image-tag:
-    description: "Docker Image Tag"
+  container-port:
+    description: 'Container port to expose'
     required: true
-    default: "latest"
- docker-port:
-   description: "Docker Port"
-   required: true
+    default: '5000'
+  host-port:
+    description: 'Host port to map'
+    required: true
+    default: '4000'
 
 runs:
   using: "composite"
   steps:
+    - uses: actions/checkout@v4
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
-
+    
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ inputs.aws-access-key-id }}
         aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
         aws-region: ${{ inputs.aws-region }}
-
+    
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
-
-    - name: Build, tag, and push Docker image to Amazon ECR
-      env:
-        REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        REPOSITORY: ${{ inputs.ecr-repository }}
-        IMAGE_TAG: ${{ inputs.image-tag }}
+    
+    - name: Build and push Docker image
+      shell: bash
       run: |
-        docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
-        docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-
-    - name: SSH into EC2 and pull the latest Docker image
+        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }} .
+        docker push ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }}
+    
+    - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ inputs.ec2-host }}
@@ -89,4 +90,4 @@ runs:
             docker stop $CONTAINER_ID
           fi
           
-          docker run -d --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker run -d -p ${{ inputs.host-port }}:${{ inputs.container-port }} --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
