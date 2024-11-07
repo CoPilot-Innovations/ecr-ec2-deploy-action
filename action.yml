@@ -104,4 +104,4 @@ runs:
           docker image prune -a -f
           
           # Run the container with the new .env file
-          docker run -p ${{ inputs.host-port }}:${{ inputs.container-port }} --env-file $ENV_FILE_PATH --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          docker run -d -p ${{ inputs.host-port }}:${{ inputs.container-port }} --env-file $ENV_FILE_PATH --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
