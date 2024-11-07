@@ -1,4 +1,3 @@
-# action.yml
 name: 'ECR Deploy Action'
 description: 'Build and deploy Docker images to Amazon ECR and EC2'
 inputs:
@@ -39,6 +38,9 @@ inputs:
     description: 'Host port to map'
     required: true
     default: '4000'
+  env-content:
+    description: 'Environment variables as a string'
+    required: true
 
 runs:
   using: "composite"
@@ -85,12 +87,21 @@ runs:
           
           docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
           
+          # Stop and remove any existing container with the same name
           CONTAINER_ID=$(docker ps -q --filter name=$CONTAINER_NAME)
           if [ ! -z "$CONTAINER_ID" ]; then
+            sleep 2
             docker stop $CONTAINER_ID
+            sleep 2
             docker rm $CONTAINER_ID
           fi
 
+          # Create a .env file from the env-content input using printf
+          ENV_FILE_PATH="/home/${{ inputs.ec2-user }}/${{ inputs.container-name }}.env"
+          printf "%s" "${{ inputs.env-content }}" > $ENV_FILE_PATH
+          
+          # Clean up old images
           docker image prune -a -f
           
-          docker run -d -p ${{ inputs.host-port }}:${{ inputs.container-port }} --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
+          # Run the container with the new .env file
+          docker run -p ${{ inputs.host-port }}:${{ inputs.container-port }} --env-file $ENV_FILE_PATH --rm --name $CONTAINER_NAME $REGISTRY/$REPOSITORY:$IMAGE_TAG
