@@ -41,7 +41,10 @@ inputs:
   env-content:
     description: 'Environment variables as a string'
     required: true
-
+  volume-mounts:
+    description: 'Volume mounts in format: host_path:container_path,host_path2:container_path2 (e.g., cred.json:/app/cred.json,product.csv:/app/product.csv)'
+    required: false
+    default: ''
 runs:
   using: "composite"
   steps:
@@ -95,18 +98,46 @@ runs:
             sleep 2
             docker rm $CONTAINER_ID
           fi
-
+          
           # Create a .env file from the env-content input using printf
           ENV_FILE_PATH="/home/${{ inputs.ec2-user }}/${{ inputs.container-name }}.env"
           printf "%s" "${{ inputs.env-content }}" > $ENV_FILE_PATH
           
+          # Create directory for volume files if it doesn't exist
+          VOLUME_DIR="/home/${{ inputs.ec2-user }}/${{ inputs.container-name }}"
+          mkdir -p $VOLUME_DIR
+          
+          # Build volume mount arguments
+          VOLUME_ARGS=""
+          VOLUME_MOUNTS="${{ inputs.volume-mounts }}"
+          
+          if [ ! -z "$VOLUME_MOUNTS" ]; then
+            IFS=',' read -ra MOUNTS <<< "$VOLUME_MOUNTS"
+            for mount in "${MOUNTS[@]}"; do
+              # Split host:container paths
+              HOST_PATH=$(echo $mount | cut -d':' -f1 | xargs)
+              CONTAINER_PATH=$(echo $mount | cut -d':' -f2 | xargs)
+              
+              # Use the full path with VOLUME_DIR
+              FULL_HOST_PATH="$VOLUME_DIR/$HOST_PATH"
+              
+              # Check if file exists
+              if [ ! -f "$FULL_HOST_PATH" ]; then
+                echo "Warning: File not found: $FULL_HOST_PATH"
+              fi
+              
+              VOLUME_ARGS="$VOLUME_ARGS -v $FULL_HOST_PATH:$CONTAINER_PATH"
+            done
+          fi
+          
           # Clean up old images
           docker image prune -a -f
           
-          # Run the container with the new .env file
+          # Run the container with the new .env file and volume mounts
           docker run -d \
             --restart unless-stopped \
             --name $CONTAINER_NAME \
             -p ${{ inputs.host-port }}:${{ inputs.container-port }} \
             --env-file $ENV_FILE_PATH \
+            $VOLUME_ARGS \
             $REGISTRY/$REPOSITORY:$IMAGE_TAG
