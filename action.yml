@@ -91,7 +91,7 @@ runs:
           docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
           
           # Stop and remove any existing container with the same name
-          CONTAINER_ID=$(docker ps --format "{{.Names}} {{.ID}}" | awk -v name="$CONTAINER_NAME" '$1==name {print $2})
+          CONTAINER_ID=$(docker ps -a --format "{{.Names}} {{.ID}}" | awk -v name="$CONTAINER_NAME" '$1==name {print $2}')
           if [ ! -z "$CONTAINER_ID" ]; then
             sleep 2
             docker stop $CONTAINER_ID
