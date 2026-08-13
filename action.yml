@@ -45,6 +45,10 @@ inputs:
     description: 'Volume mounts in format: host_path:container_path,host_path2:container_path2 (e.g., cred.json:/app/cred.json,product.csv:/app/product.csv)'
     required: false
     default: ''
+  memory-limit:
+    description: 'Optional hard memory limit for the container (e.g. "2g", "512m"). Leave empty for no limit (default — unchanged behavior for existing callers). Prevents one container from exhausting host memory and affecting other containers/services on the same instance.'
+    required: false
+    default: ''
 runs:
   using: "composite"
   steps:
@@ -130,14 +134,22 @@ runs:
             done
           fi
           
+          # Build memory-limit argument (optional — empty means no limit, same as before)
+          MEMORY_ARGS=""
+          MEMORY_LIMIT="${{ inputs.memory-limit }}"
+          if [ ! -z "$MEMORY_LIMIT" ]; then
+            MEMORY_ARGS="--memory=$MEMORY_LIMIT --memory-swap=$MEMORY_LIMIT"
+          fi
+
           # Clean up old images
           docker image prune -a -f
-          
-          # Run the container with the new .env file and volume mounts
+
+          # Run the container with the new .env file, volume mounts, and memory limit
           docker run -d \
             --restart unless-stopped \
             --name $CONTAINER_NAME \
             -p ${{ inputs.host-port }}:${{ inputs.container-port }} \
             --env-file $ENV_FILE_PATH \
             $VOLUME_ARGS \
+            $MEMORY_ARGS \
             $REGISTRY/$REPOSITORY:$IMAGE_TAG
