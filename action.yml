@@ -41,6 +41,30 @@ inputs:
   env-content:
     description: 'Environment variables as a string'
     required: true
+  build-args:
+    description: >
+      Extra arguments for `docker build`, e.g.
+      "--build-arg FLAVOR=dev". Optional; existing callers are unaffected.
+    required: false
+    default: ''
+  build-secrets:
+    description: >
+      BuildKit secret mounts for `docker build`, e.g.
+      "id=env_file,src=.env.dev". Needed by builds that must read
+      configuration WITHOUT baking it into a layer — a secret mount does not
+      persist in the image, unlike a COPY. Written from `env-content` when
+      `build-secret-from-env` names an id. Optional.
+    required: false
+    default: ''
+  build-secret-from-env:
+    description: >
+      Writes `env-content` to a temporary file and mounts it as a BuildKit
+      secret under this id, for builds that need the environment at BUILD time
+      (a Next.js app inlining NEXT_PUBLIC_* or prerendering pages, say). The
+      file is created on the runner and deleted immediately after the build.
+      Optional; leave empty to keep `env-content` runtime-only.
+    required: false
+    default: ''
   volume-mounts:
     description: 'Volume mounts in format: host_path:container_path,host_path2:container_path2 (e.g., cred.json:/app/cred.json,product.csv:/app/product.csv)'
     required: false
@@ -70,9 +94,34 @@ runs:
     
     - name: Build and push Docker image
       shell: bash
+      env:
+        ENV_CONTENT: ${{ inputs.env-content }}
+        SECRET_ID: ${{ inputs.build-secret-from-env }}
       run: |
-        docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }} .
-        docker push ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }}
+        set -euo pipefail
+        IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr-repository }}:${{ inputs.image-tag }}"
+
+        SECRET_ARGS=""
+        SECRET_FILE=""
+        if [ -n "$SECRET_ID" ]; then
+          # Written with umask 077 and removed on exit, success or failure.
+          SECRET_FILE="$(mktemp)"
+          umask 077
+          printf '%s' "$ENV_CONTENT" > "$SECRET_FILE"
+          SECRET_ARGS="--secret id=${SECRET_ID},src=${SECRET_FILE}"
+        fi
+        # `return 0` matters: under `set -e` a failing test in an EXIT trap
+        # would change the step's exit code.
+        cleanup() { [ -n "$SECRET_FILE" ] && rm -f "$SECRET_FILE"; return 0; }
+        trap cleanup EXIT
+
+        # Unquoted on purpose: these carry multiple whitespace-separated flags.
+        DOCKER_BUILDKIT=1 docker build \
+          ${{ inputs.build-args }} \
+          $SECRET_ARGS \
+          ${{ inputs.build-secrets }} \
+          -t "$IMAGE" .
+        docker push "$IMAGE"
     
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v1.0.3

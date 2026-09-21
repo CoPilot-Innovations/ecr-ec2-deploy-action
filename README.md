@@ -36,6 +36,32 @@ This GitHub Action automates the process of building Docker images, pushing them
 | `container-name` | Name for the Docker container | Yes | - |
 | `container-port` | Container port to expose | No | 5000 |
 | `host-port` | Host port to map | No | 4000 |
+| `build-args` | Extra `docker build` arguments, e.g. `--build-arg FLAVOR=dev` | No | - |
+| `build-secrets` | BuildKit secret mounts, e.g. `id=cert,src=cert.pem` | No | - |
+| `build-secret-from-env` | Mount `env-content` as a BuildKit secret under this id, for builds that need configuration at BUILD time | No | - |
+
+### Builds that need configuration at build time
+
+`env-content` is written to the EC2 host and passed to `docker run --env-file`,
+so it reaches the container at RUNTIME only. Some builds need it earlier — a
+Next.js app inlines `NEXT_PUBLIC_*` into the client bundle and may prerender
+pages from a database while building.
+
+`build-secret-from-env` covers that without baking anything into a layer: the
+value is written to a temporary file on the runner, mounted with
+`--secret` (which BuildKit guarantees does not persist in the image, unlike a
+`COPY`), and deleted immediately afterwards.
+
+```yaml
+    build-args: --build-arg FLAVOR=dev
+    build-secret-from-env: env_file
+    env-content: ${{ secrets.EC2_ENV_CONTENT_DEV }}
+```
+
+```dockerfile
+ARG FLAVOR
+RUN --mount=type=secret,id=env_file,target=/app/.env.$FLAVOR npm run build
+```
 
 ## Prerequisites
 
